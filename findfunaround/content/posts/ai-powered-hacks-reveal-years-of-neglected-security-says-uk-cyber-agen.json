@@ -1,0 +1,22 @@
+{
+  "title": "AI‑Powered Hacks Reveal Years of Neglected Security, Says UK Cyber Agency",
+  "slug": "ai-powered-hacks-reveal-years-of-neglected-security-says-uk-cyber-agen",
+  "date": "2026-11-24T20:09:26.992Z",
+  "category": "technology",
+  "excerpt": "UK’s NCSC warns AI tools are rapidly exploiting simple, long‑standing security gaps, urging firms to strengthen basic defenses.",
+  "body": "The U.K. National Cybersecurity Centre (NCSC) has raised the alarm that AI‑driven hacking tools are exposing decades of weak security practices across organizations. In a recent blog post, the agency noted a surge in incidents since September where autonomous penetration‑testing tools—originally created for defenders—have been repurposed by malicious actors to breach networks at unprecedented speed.\n\n## AI Makes Simple Hacks Lightning‑Fast\n\nUnlike traditional attacks that often target newly discovered flaws, the AI tools in question focus on well‑known, easy‑to‑exploit weaknesses such as default passwords, exposed internet‑facing systems, and poorly secured API endpoints. Open‑source projects like Artex and Cairn, released earlier this year, allow anyone to download sophisticated scanning capabilities for free. The FBI has also warned that these tools enable hackers to conduct attacks at a pace previously unseen.\n\n## Old Vulnerabilities, New Threat Level\n\nThe NCSC stresses that the vulnerabilities being leveraged are not novel memory‑corruption bugs or zero‑day exploits. Instead, they are the result of “technical debt” – outdated configurations and neglected security hygiene that have accumulated over years. AI simply accelerates the discovery process, turning months of manual probing into minutes of automated scanning.\n\n## Building Strong Foundations Is Key\n\nDespite the high‑tech nature of the threat, the agency’s message is straightforward: basic cybersecurity best practices can stop most of these AI‑augmented attacks. Implementing strong password policies, regularly patching known flaws, and securing API access are still the most effective defenses. The NCSC reminds organizations that AI does not render existing controls obsolete; it merely makes the need for solid fundamentals more urgent than ever.\n\nThe warning comes from TechCrunch’s security editor Zack Whittaker, who reported on the NCSC’s findings. As AI continues to reshape the cyber‑threat landscape, the British cyber agency urges firms to audit their systems, eliminate legacy weaknesses, and stay ahead of tools that can now locate and exploit those gaps in minutes.",
+  "image": {
+    "url": "/images/ai-powered-hacks-reveal-years-of-neglected-security-says-uk-cyber-agen.jpg",
+    "alt": "cybersecurity dashboard",
+    "credit": "DesiFreeMusic",
+    "creditUrl": "https://pixabay.com/photos/business-businessman-computer-10279402/",
+    "source": "Pixabay"
+  },
+  "video": null,
+  "sources": [
+    {
+      "title": "UK warns AI-driven cyberattacks are exposing years of weak security",
+      "url": "https://techcrunch.com/2026/11/24/uk-warns-ai-driven-cyberattacks-are-exposing-years-of-weak-security/"
+    }
+  ]
+}
