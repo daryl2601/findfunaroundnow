@@ -1,8 +1,8 @@
 name: Auto post
 on:
   schedule:
-    - cron: "0 6 */3 * *"   # every 3 days (keeps Netlify free credits safe)
-  workflow_dispatch:         # lets you run it by hand
+    - cron: "0 6 */3 * *"
+  workflow_dispatch:
 permissions:
   contents: write
 concurrency:
@@ -12,6 +12,9 @@ jobs:
   post:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: findfunaround
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
