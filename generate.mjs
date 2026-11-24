@@ -5,16 +5,18 @@ import path from "node:path";
 
 const env = process.env;
 const GEMINI_API_KEY = (env.GEMINI_API_KEY || "").trim();
+const GROQ_API_KEY = (env.GROQ_API_KEY || "").trim();
 const PIXABAY_API_KEY = (env.PIXABAY_API_KEY || "").trim();
 const YOUTUBE_API_KEY = (env.YOUTUBE_API_KEY || "").trim();
 const PER_RUN = Number(env.POSTS_PER_RUN) || 6;
-const GAP_MS = env.GAP_MS !== undefined ? Number(env.GAP_MS) : 6000; // pause between posts (free-tier rate limit)
+const GAP_MS = env.GAP_MS !== undefined ? Number(env.GAP_MS) : 15000; // pause between posts (free-tier rate limit)
+const GROQ_MODELS = [...new Set([(env.GROQ_MODEL || "").trim(), "llama-3.3-70b-versatile", "llama-3.1-8b-instant"].filter(Boolean))];
 const MODELS = [...new Set([(env.GEMINI_MODEL || "").trim(), "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"].filter(Boolean))];
 const dir = "content/posts";
 const UA = { "User-Agent": "Mozilla/5.0 (compatible; findfunaround-bot/1.0)" };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-if (!GEMINI_API_KEY) { console.error("ERROR: GEMINI_API_KEY secret is missing or empty. Add it in GitHub > Settings > Secrets and variables > Actions."); process.exit(1); }
+if (!GEMINI_API_KEY && !GROQ_API_KEY) { console.error("ERROR: add a GROQ_API_KEY (or GEMINI_API_KEY) secret in GitHub > Settings > Secrets and variables > Actions."); process.exit(1); }
 const sources = JSON.parse(fs.readFileSync("sources.json", "utf8"));
 
 const decode = (s = "") => s.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, " ")
@@ -75,6 +77,40 @@ async function gemini(prompt) {
   throw new Error("Gemini failed -> " + lastErr);
 }
 
+async function groq(prompt) {
+  let lastErr = "";
+  for (const model of GROQ_MODELS) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      let r, j;
+      try {
+        r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
+          body: JSON.stringify({ model, temperature: 0.7, response_format: { type: "json_object" }, messages: [{ role: "user", content: prompt }] }),
+          signal: AbortSignal.timeout(90000),
+        });
+        j = await r.json();
+      } catch (e) { lastErr = `${model}: ${e.message}`; await sleep(3000); continue; }
+      if (r.ok) {
+        const text = (j?.choices?.[0]?.message?.content || "").trim();
+        if (text) return text;
+        lastErr = `${model}: empty reply`; break;
+      }
+      lastErr = `${model}: HTTP ${r.status} ${j?.error?.message || ""}`.trim();
+      if (r.status === 429 || r.status >= 500) { await sleep(Math.min(Number(r.headers.get("retry-after")) || attempt * 15, 60) * 1000); continue; }
+      if (r.status === 401 || r.status === 403) throw new Error("Groq failed -> " + lastErr);
+      break;
+    }
+  }
+  throw new Error("Groq failed -> " + lastErr);
+}
+async function llm(prompt) {
+  const errs = [];
+  if (GROQ_API_KEY) { try { return await groq(prompt); } catch (e) { errs.push(e.message); } }
+  if (GEMINI_API_KEY) { try { return await gemini(prompt); } catch (e) { errs.push(e.message); } }
+  throw new Error(errs.join(" | "));
+}
+
 function parseArticle(text) {
   let a;
   const clean = text.replace(/```json|```/g, "").trim();
@@ -93,7 +129,7 @@ Return ONLY JSON: {"title": string, "excerpt": string (max 30 words), "body": st
 SOURCE HEADLINE: ${story.title}
 SOURCE SUMMARY: ${story.summary}
 SOURCE TEXT: ${research}`;
-  return parseArticle(await gemini(prompt));
+  return parseArticle(await llm(prompt));
 }
 
 async function save(url, slug) {
@@ -133,7 +169,7 @@ const seen = new Set();
 for (const f of fs.readdirSync(dir).filter(f => f.endsWith(".json"))) {
   try { seen.add(JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")).sources?.[0]?.url); } catch {}
 }
-console.log(`Models to try: ${MODELS.join(", ")} | Posts wanted: ${PER_RUN} | Pixabay key: ${PIXABAY_API_KEY ? "yes" : "no"}`);
+console.log(`Models to try: ${MODELS.join(", ")} | Posts wanted: ${PER_RUN} | Pixabay key: ${PIXABAY_API_KEY ? "yes" : "no"} | Groq key: ${GROQ_API_KEY ? "yes" : "no"} | Gemini key: ${GEMINI_API_KEY ? "yes" : "no"}`);
 
 const queues = {};
 for (const cat of Object.keys(sources)) {
@@ -141,7 +177,7 @@ for (const cat of Object.keys(sources)) {
   queues[cat] = items.sort(() => Math.random() - 0.5).slice(0, 8);
 }
 const cats = Object.keys(queues).sort(() => Math.random() - 0.5);
-let made = 0, failures = 0, fatal = false;
+let made = 0, failures = 0, fatal = false, streak = 0;
 const errors = [];
 
 for (let round = 0; round < 4 && made < PER_RUN && !fatal; round++) {
@@ -158,13 +194,13 @@ for (let round = 0; round < 4 && made < PER_RUN && !fatal; round++) {
       const post = { title: a.title, slug, date: new Date().toISOString(), category: cat, excerpt: a.excerpt, body: a.body, image, video: vid,
         sources: [{ title: story.title, url: story.url }] };
       fs.writeFileSync(path.join(dir, `${slug}.json`), JSON.stringify(post, null, 2));
-      seen.add(story.url); made++;
+      seen.add(story.url); made++; streak = 0;
       console.log(`CREATED (${made}/${PER_RUN}) [${cat}]: ${a.title}`);
       if (made < PER_RUN) await sleep(GAP_MS);
     } catch (e) {
-      failures++; errors.push(e.message);
+      failures++; streak++; errors.push(e.message);
       console.log(`SKIPPED [${cat}] ${story.title.slice(0, 60)} -> ${e.message}`);
-      if (/API key|PERMISSION_DENIED|HTTP 40[13]/i.test(e.message)) fatal = true;
+      if (streak >= 3) { fatal = true; console.log("3 failures in a row, stopping."); }
     }
   }
 }
