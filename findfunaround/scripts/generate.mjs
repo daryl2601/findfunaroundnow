@@ -10,7 +10,6 @@ const PIXABAY_API_KEY = (env.PIXABAY_API_KEY || "").trim();
 const YOUTUBE_API_KEY = (env.YOUTUBE_API_KEY || "").trim();
 const PER_RUN = Number(env.POSTS_PER_RUN) || 6;
 const GAP_MS = env.GAP_MS !== undefined ? Number(env.GAP_MS) : 15000; // pause between posts (free-tier rate limit)
-const GROQ_MODELS = [...new Set([(env.GROQ_MODEL || "").trim(), "llama-3.3-70b-versatile", "llama-3.1-8b-instant"].filter(Boolean))];
 const MODELS = [...new Set([(env.GEMINI_MODEL || "").trim(), "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"].filter(Boolean))];
 const dir = "content/posts";
 const UA = { "User-Agent": "Mozilla/5.0 (compatible; findfunaround-bot/1.0)" };
@@ -77,32 +76,51 @@ async function gemini(prompt) {
   throw new Error("Gemini failed -> " + lastErr);
 }
 
+let groqList = null;
+async function groqModels() {
+  if (groqList) return groqList;
+  // Groq retires models often, so ask Groq which ones this key can use right now.
+  const preferred = [(env.GROQ_MODEL || "").trim(), "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"].filter(Boolean);
+  let list = preferred;
+  try {
+    const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: `Bearer ${GROQ_API_KEY}` }, signal: AbortSignal.timeout(20000) });
+    const j = await r.json();
+    const ids = (j.data || []).map(m => m.id).filter(id => !/whisper|tts|guard|orpheus|embed|transcri|safeguard|playai/i.test(id));
+    if (ids.length) list = [...preferred.filter(id => ids.includes(id)), ...ids];
+  } catch (e) { console.log("Could not list Groq models:", e.message); }
+  groqList = [...new Set(list)].slice(0, 6);
+  console.log("Groq models to try: " + groqList.join(", "));
+  return groqList;
+}
 async function groq(prompt) {
-  let lastErr = "";
-  for (const model of GROQ_MODELS) {
+  const errs = [];
+  for (const model of await groqModels()) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       let r, j;
+      const body = { model, temperature: 0.7, response_format: { type: "json_object" }, messages: [{ role: "user", content: prompt }] };
+      if (model.startsWith("openai/gpt-oss")) body.reasoning_effort = "low";
       try {
         r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-          body: JSON.stringify({ model, temperature: 0.7, response_format: { type: "json_object" }, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify(body),
           signal: AbortSignal.timeout(90000),
         });
         j = await r.json();
-      } catch (e) { lastErr = `${model}: ${e.message}`; await sleep(3000); continue; }
+      } catch (e) { errs.push(`${model}: ${e.message}`); await sleep(3000); continue; }
       if (r.ok) {
         const text = (j?.choices?.[0]?.message?.content || "").trim();
         if (text) return text;
-        lastErr = `${model}: empty reply`; break;
+        errs.push(`${model}: empty reply`); break;
       }
-      lastErr = `${model}: HTTP ${r.status} ${j?.error?.message || ""}`.trim();
-      if (r.status === 429 || r.status >= 500) { await sleep(Math.min(Number(r.headers.get("retry-after")) || attempt * 15, 60) * 1000); continue; }
-      if (r.status === 401 || r.status === 403) throw new Error("Groq failed -> " + lastErr);
-      break;
+      const msg = `${model}: HTTP ${r.status} ${String(j?.error?.message || "").slice(0, 150)}`.trim();
+      if (r.status === 429 || r.status >= 500) { await sleep(Math.min(Number(r.headers.get("retry-after")) || attempt * 15, 60) * 1000); if (attempt === 3) errs.push(msg); continue; }
+      errs.push(msg);
+      if (r.status === 401) throw new Error("Groq failed (bad key) -> " + msg);
+      break; // 400/403/404: try the next model
     }
   }
-  throw new Error("Groq failed -> " + lastErr);
+  throw new Error("Groq failed -> " + errs.join(" ; "));
 }
 async function llm(prompt) {
   const errs = [];
