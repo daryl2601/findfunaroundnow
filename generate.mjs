@@ -1,4 +1,4 @@
-// Picks trending stories from RSS feeds, writes original articles with Gemini (free tier),
+// Picks trending stories from RSS feeds, writes original articles with Groq/Gemini (free tiers),
 // adds a Pixabay photo (Openverse fallback) + optional YouTube video, saves content/posts/<slug>.json
 import fs from "node:fs";
 import path from "node:path";
