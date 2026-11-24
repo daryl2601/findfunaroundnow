@@ -1,0 +1,37 @@
+name: Auto post
+on:
+  schedule:
+    - cron: "0 6 */3 * *"   # every 3 days (keeps Netlify free credits safe)
+  workflow_dispatch:         # lets you run it by hand
+permissions:
+  contents: write
+concurrency:
+  group: auto-post
+  cancel-in-progress: false
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Write new posts
+        run: node scripts/generate.mjs
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          POSTS_PER_RUN: "6"
+      - name: Commit new posts
+        run: |
+          git config user.name "auto-blog"
+          git config user.email "auto-blog@users.noreply.github.com"
+          git add content
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit"
+          else
+            git commit -m "New posts"
+            git push
+          fi
